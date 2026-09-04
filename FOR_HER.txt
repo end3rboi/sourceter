@@ -1,0 +1,27 @@
+Sourceter — renaming shop photos
+
+WINDOWS
+  Double-click Sourceter.exe. That's it, there's nothing to install.
+  The first launch takes a few seconds; after that it's quick.
+
+MAC
+  Drag Sourceter.app into your Applications folder (or anywhere you like),
+  then double-click it.
+  The very first time only: right-click the app, choose Open, then click
+  Open again in the box that appears. macOS asks this once for any app that
+  didn't come from the App Store. After that, double-click works normally.
+
+HOW TO USE IT
+  Click the ? button in the top right corner. Six short steps.
+
+  The very short version: put your photo folder on one side of the screen
+  and Sourceter on the other, drag one shop's photos across, type the shop
+  name, press Enter. Repeat for each shop, then press Confirm and rename.
+
+  Nothing is renamed until you press Confirm, and you'll see the full list
+  of old and new names before that happens.
+
+IF SOMETHING LOOKS WRONG
+  Press "Undo a run" and pick the batch you want reversed. Every rename is
+  written to a spreadsheet (_rename_log_....csv) in the same folder before
+  a single file is touched, so the original names can always be recovered.
