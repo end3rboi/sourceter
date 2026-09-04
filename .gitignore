@@ -1,0 +1,9 @@
+.venv/
+dist/
+build/
+*.spec
+__pycache__/
+_rename_log_*.csv
+*.jpg
+*.jpeg
+!icon.png
