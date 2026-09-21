@@ -403,12 +403,16 @@ input, select, textarea{ font-size:16px !important; }
       <div class="dimchips" id="dimChips"></div>
       <div class="dimgrid" id="dimGrid"></div>
 
-      <label class="lbl" for="fPrice" style="margin-top:12px">Rent / Price</label>
-      <input id="fPrice" type="text" placeholder="e.g. 7500, or 1200–1500" autocomplete="off" enterkeyhint="done">
+      <div class="two" style="margin-top:12px">
+        <div><label class="lbl" for="fRent">Rent</label>
+          <input id="fRent" type="text" placeholder="e.g. 7500" autocomplete="off" enterkeyhint="next"></div>
+        <div><label class="lbl" for="fPrice">Price</label>
+          <input id="fPrice" type="text" placeholder="e.g. 45,000" autocomplete="off" enterkeyhint="done"></div>
+      </div>
     </div>
 
     <div class="minor">
-      <button id="sameBtn" title="Copy pieces, size and price from the photo before - for another angle of the same item">Same item as previous photo</button>
+      <button id="sameBtn" title="Copy pieces, size, rent and price from the photo before - for another angle of the same item">Same item as previous photo</button>
     </div>
 
     <details class="fold" id="textFold">
@@ -720,16 +724,17 @@ const LINE_KINDS = {
   location: { label:"Location",         value:false, ph:"e.g. Loc: Mumbai" },
   storeloc: { label:"Store, location",  value:false, ph:"both on one line" },
   mobile:   { label:"Mobile number",    value:false, ph:"e.g. Mob: 98200 11111" },
-  price:    { label:"Rent / Price",     value:false, ph:"e.g. Rent/Price: 7500" },
+  rent:     { label:"Rent",             value:false, ph:"e.g. Rent: 7500" },
+  price:    { label:"Price",            value:false, ph:"e.g. Price: 45,000" },
   extras:   { label:"Extra fields",     value:false, ph:"one line each" },
   date:     { label:"Date",             value:false, ph:"the date at the top" },
   text:     { label:"Text",             value:true,  ph:"anything, e.g. your name" },
 };
 function defaultPattern(){
-  return ["pieces","dims","store","location","mobile","price","extras"].map(k => ({ kind:k, value:"" }));
+  return ["pieces","dims","store","location","mobile","rent","price","extras"].map(k => ({ kind:k, value:"" }));
 }
 const SAMPLE = { pieces:2, dims:{H:"31", DIA:"15"}, unit:"in", dimsShown:["H","DIA","W"], store:"Sunshine", location:"Mumbai",
-                 mobile:"98200 11111", price:"7500", extras:[] };
+                 mobile:"98200 11111", rent:"7500", price:"45,000", extras:[] };
 
 /* "Store: Sunshine" - the category name in front, blank if there's nothing to say */
 function labelled(name, value){ value = (value || "").trim(); return value ? name + ": " + value : ""; }
@@ -742,7 +747,8 @@ function renderLine(line, p){
     case "location": return [labelled("Loc", p.location)];
     case "storeloc": return [[labelled("Store", p.store), labelled("Loc", p.location)].filter(Boolean).join(", ")];
     case "mobile":   return [labelled("Mob", p.mobile)];
-    case "price":    return [labelled("Rent/Price", p.price)];
+    case "rent":     return [labelled("Rent", p.rent)];
+    case "price":    return [labelled("Price", p.price)];
     case "extras":   return (p.extras || []).filter(x => (x.v || "").trim())
                        .map(x => ((x.k || "").trim() ? x.k.trim() + ": " : "") + x.v.trim());
     case "date":     return [isoToHuman(S.date)];
@@ -760,7 +766,7 @@ function validatePattern(p){
   for (const l of p) if (l.kind === "text" && !(l.value || "").trim())
     throw new Error("One of the Text lines is empty. Fill it in or remove it.");
 }
-function isDone(p){ return !!(p.pieces || formatDims(p.dims, p.unit, p.dimsShown) || (p.price || "").trim()); }
+function isDone(p){ return !!(p.pieces || formatDims(p.dims, p.unit, p.dimsShown) || (p.rent || "").trim() || (p.price || "").trim()); }
 /* ---------- drawing: white text, black border, bottom corner ---------- */
 /* Size is set the way it will be seen: "15" means it reads like 15-point text
    when the photo is opened full-width on a phone (about 390 points across).
@@ -886,7 +892,7 @@ const DB = {
     });
   },
 };
-const DETAIL_KEYS = ["id","key","name","time","store","location","mobile","extras","pieces","dims","dimsShown","unit","price","carried"];
+const DETAIL_KEYS = ["id","key","name","time","store","location","mobile","extras","pieces","dims","dimsShown","unit","rent","price","carried"];
 function record(p){ const r = {}; for (const k of DETAIL_KEYS) r[k] = p[k]; r.time = +p.time; return r; }
 
 async function savePhotosNew(list){
@@ -977,7 +983,7 @@ async function addFiles(files){
       arrived.push({ id: ++S.seq, key, name: file.name || ("photo-" + S.seq + ".jpg"), blob: file,
         url: URL.createObjectURL(file), time: meta.time,
         store:"", location:"", mobile:"", extras:[], pieces:0, dims:{}, unit:S.unit,
-        dimsShown: S.dimsShown.slice(), price:"", carried:false });
+        dimsShown: S.dimsShown.slice(), rent:"", price:"", carried:false });
     }
     if (!arrived.length){
       status(skipped.length ? "Couldn't use: " + skipped.join(", ") + "."
@@ -1055,6 +1061,7 @@ function render(navigated){
   // size
   document.querySelectorAll("#unitSeg button").forEach(b => b.classList.toggle("on", b.dataset.u === (p.unit || "in")));
   renderDims();
+  $("fRent").value = p.rent || "";
   $("fPrice").value = p.price || "";
   drawPreview();
   refreshBottom();
@@ -1215,7 +1222,7 @@ function patternChanged(){
 }
 
 /* ---------- export: every photo once, into one date folder ---------- */
-const CSV_FIELDS = ["file","date","store","location","mobile","pieces_available","size","price_rent","extra_fields","text_on_photo"];
+const CSV_FIELDS = ["file","date","store","location","mobile","pieces_available","size","rent","price","extra_fields","text_on_photo"];
 function csvEscape(v){ v = String(v == null ? "" : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
 
 let prepared = null;      // { files:[File], zipBlob:null, date, csv }
@@ -1226,7 +1233,7 @@ async function startExport(){
   const noStore = S.photos.filter(p => !(p.store || "").trim()).length;
   $("exTitle").textContent = "Export " + n + " photo" + (n === 1 ? "" : "s");
   $("exSummary").textContent = "Folder: " + S.date + " (" + isoToHuman(S.date) + ")."
-    + (empty ? " " + empty + " photo" + (empty === 1 ? " has" : "s have") + " no pieces, size or price yet." : "")
+    + (empty ? " " + empty + " photo" + (empty === 1 ? " has" : "s have") + " no pieces, size, rent or price yet." : "")
     + (noStore ? " " + noStore + " without a store." : "");
   $("exOuts").classList.add("hidden"); $("exBar").style.width = "0";
   $("exStatus").textContent = "Writing the text onto each photo…";
@@ -1247,7 +1254,7 @@ async function startExport(){
       imageCache.delete(p.id);                        // don't hold every full-size photo in memory
       files.push(new File([blob], name, { type: "image/jpeg", lastModified: +p.time }));
       rows.push([folder + "/" + name, S.date, p.store, p.location, p.mobile, p.pieces || "", formatDims(p.dims, p.unit, p.dimsShown),
-                 p.price, (p.extras || []).filter(x => x.v).map(x => (x.k ? x.k + ": " : "") + x.v).join("; "),
+                 p.rent, p.price, (p.extras || []).filter(x => x.v).map(x => (x.k ? x.k + ": " : "") + x.v).join("; "),
                  linesFor(p).join(" | ")].map(csvEscape).join(","));
       $("exBar").style.width = Math.round((i + 1) / n * 100) + "%";
       $("exStatus").textContent = "Photo " + (i + 1) + " of " + n;
@@ -1328,9 +1335,9 @@ const HOW_TO = [
   ["Store",
    "On the first photo, fill in the store name, area and number. The next photos keep it until you change it."],
   ["Each item",
-   "Tap how many pieces, type the size and the rent or price. Then tap Next."],
+   "Tap how many pieces, type the size, then the rent and/or price. Then tap Next."],
   ["Same item, another angle?",
-   "Tap Same item as previous. It copies the pieces, size and price."],
+   "Tap Same item as previous. It copies the pieces, size, rent and price."],
   ["Don't want a photo?",
    "Tap Leave out. It stays in your gallery."],
   ["Export",
@@ -1413,6 +1420,10 @@ function bindStoreField(id, key){
 async function init(){
   S.pattern = loadPref("pattern4", null) || defaultPattern();
   if (!Array.isArray(S.pattern) || S.pattern.some(l => !LINE_KINDS[l.kind])) S.pattern = defaultPattern();
+  if (!S.pattern.some(l => l.kind === "rent")){
+    const at = S.pattern.findIndex(l => l.kind === "price");
+    S.pattern.splice(at < 0 ? S.pattern.length : at, 0, { kind: "rent", value: "" });
+  }
   S.fontSize = +loadPref("fontSize", 15) || 15;
   S.corner = loadPref("corner", "bl") === "br" ? "br" : "bl";
   S.unit = loadPref("unit3", "in");
@@ -1458,13 +1469,15 @@ async function init(){
     document.querySelectorAll("#unitSeg button").forEach(x => x.classList.toggle("on", x === b));
     edited(false);
   }));
+  $("fRent").addEventListener("input", () => { current().rent = $("fRent").value; edited(false); });
+  $("fRent").addEventListener("keydown", (ev) => { if (ev.key === "Enter") $("fPrice").focus(); });
   $("fPrice").addEventListener("input", () => { current().price = $("fPrice").value; edited(false); });
   $("fPrice").addEventListener("keydown", (ev) => { if (ev.key === "Enter") $("fPrice").blur(); });
 
   $("sameBtn").addEventListener("click", () => {
     if (S.cur === 0) return;
     const p = current(), prev = S.photos[S.cur - 1];
-    p.pieces = prev.pieces; p.dims = Object.assign({}, prev.dims); p.unit = prev.unit; p.price = prev.price;
+    p.pieces = prev.pieces; p.dims = Object.assign({}, prev.dims); p.unit = prev.unit; p.rent = prev.rent; p.price = prev.price;
     p.dimsShown = (prev.dimsShown || S.dimsShown).slice();
     carryInto(p, prev);
     render(false); saveSoon();
