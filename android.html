@@ -844,7 +844,17 @@ async function renderPhoto(photo){
   const ctx = c.getContext("2d");
   ctx.drawImage(img, 0, 0, w, h);
   drawOverlay(ctx, w, h, linesFor(photo), S.fontSize, S.corner);
-  const blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.92));
+  let blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.92));
+  if (!blob && Math.min(w, h) > 1400){
+    // phones refuse very large canvases when memory is tight: redraw smaller rather than lose the photo
+    const k = 2400 / Math.max(w, h);
+    const w2 = Math.round(w * k), h2 = Math.round(h * k);
+    c.width = w2; c.height = h2;
+    const ctx2 = c.getContext("2d");
+    ctx2.drawImage(img, 0, 0, w2, h2);
+    drawOverlay(ctx2, w2, h2, linesFor(photo), S.fontSize, S.corner);
+    blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.9));
+  }
   c.width = c.height = 0;            // free the memory straight away (matters on iPhone)
   if (!blob) throw new Error("Could not encode " + photo.name + ".");
   return blob;
@@ -993,7 +1003,7 @@ async function addFiles(files){
       arrived.push({ id: ++S.seq, key, name: file.name || ("photo-" + S.seq + ".jpg"), blob: file,
         url: URL.createObjectURL(file), time: meta.time,
         store:"", location:"", mobile:"", extras:[], pieces:0, dims:{}, unit:S.unit,
-        dimsShown: S.dimsShown.slice(), rent:"", price:"", carried:false });
+        dimsShown: S.dimsShown.slice(), rent:"", price:"", carried:true });
     }
     if (!arrived.length){
       status(skipped.length ? "Couldn't use: " + skipped.join(", ") + "."
@@ -1002,6 +1012,10 @@ async function addFiles(files){
     }
     // the gallery hands them over in any order; put them back in the order they were shot
     arrived.sort((a, b) => a.time - b.time);
+    const last = S.photos.length ? S.photos[S.photos.length - 1] : null;
+    if (last && hasStore(last)) for (const p of arrived){
+      carryInto(p, last); p.unit = last.unit; p.dimsShown = (last.dimsShown || S.dimsShown).slice();
+    }
     const firstNew = S.photos.length;
     S.photos = S.photos.concat(arrived);
     goTo(firstNew);
@@ -1016,6 +1030,23 @@ async function addFiles(files){
 /* ---------- moving between photos ---------- */
 const hasStore = (p) => !!((p.store || "").trim() || (p.location || "").trim() || (p.mobile || "").trim()
                         || (p.extras || []).some(x => (x.v || "").trim()));
+/* Her store details belong to the whole batch, not just the photos she has
+   stepped through. Typing them fills in every later photo that hasn't been
+   given its own store, so nothing exports blank just because she skipped ahead.
+   Moving to a new store only affects the photos after the one she's on. */
+function propagateStore(fromIndex){
+  const src = S.photos[fromIndex];
+  if (!src) return 0;
+  let n = 0;
+  for (let j = fromIndex + 1; j < S.photos.length; j++){
+    const p = S.photos[j];
+    if (p.carried === false) break;          // she typed a store here: that's a new store, leave the rest alone
+    carryInto(p, src);
+    n++;
+  }
+  return n;
+}
+
 function carryInto(to, from){
   to.store = from.store; to.location = from.location; to.mobile = from.mobile;
   to.extras = (from.extras || []).map(x => ({ k: x.k, v: x.v }));
@@ -1114,8 +1145,8 @@ function renderExtras(){
     const k = el("input", "k"); k.type = "text"; k.value = x.k; k.placeholder = "e.g. Condition"; k.autocomplete = "off";
     const v = el("input"); v.type = "text"; v.value = x.v; v.placeholder = "value"; v.autocomplete = "off"; v.style.flex = "1";
     const rm = el("button", "icon del"); rm.textContent = "✕"; rm.title = "Remove this field";
-    k.addEventListener("input", () => { p.extras[i].k = k.value; edited(true); });
-    v.addEventListener("input", () => { p.extras[i].v = v.value; edited(true); });
+    k.addEventListener("input", () => { p.extras[i].k = k.value; p.carried = false; propagateStore(S.cur); edited(true); });
+    v.addEventListener("input", () => { p.extras[i].v = v.value; p.carried = false; propagateStore(S.cur); edited(true); });
     rm.addEventListener("click", () => { p.extras.splice(i, 1); renderExtras(); edited(true); });
     row.append(k, v, rm);
     box.appendChild(row);
@@ -1240,9 +1271,11 @@ async function startExport(){
   const dlg = $("exportDlg");
   const n = S.photos.length;
   const empty = S.photos.filter(p => !isDone(p)).length;
+  const blank = S.photos.filter(p => linesFor(p).length === 0).length;
   const noStore = S.photos.filter(p => !(p.store || "").trim()).length;
   $("exTitle").textContent = "Export " + n + " photo" + (n === 1 ? "" : "s");
   $("exSummary").textContent = "Folder: " + S.date + " (" + isoToHuman(S.date) + ")."
+    + (blank ? " " + blank + " photo" + (blank === 1 ? " has" : "s have") + " NOTHING written on them." : "")
     + (empty ? " " + empty + " photo" + (empty === 1 ? " has" : "s have") + " no pieces, size, rent or price yet." : "")
     + (noStore ? " " + noStore + " without a store." : "");
   $("exOuts").classList.add("hidden"); $("exBar").style.width = "0";
@@ -1425,7 +1458,13 @@ function androidBack(){
 
 /* ---------- wiring ---------- */
 function bindStoreField(id, key){
-  $(id).addEventListener("input", () => { current()[key] = $(id).value; edited(true); });
+  $(id).addEventListener("input", () => {
+    current()[key] = $(id).value;
+    current().carried = false;               // typed here, so this is where a new store starts
+    const n = propagateStore(S.cur);
+    edited(true);
+    if (n) status("Store details applied to " + n + " later photo" + (n === 1 ? "" : "s") + ".");
+  });
 }
 async function init(){
   S.pattern = loadPref("pattern4", null) || defaultPattern();
@@ -1454,6 +1493,7 @@ async function init(){
   bindStoreField("fStore", "store"); bindStoreField("fLoc", "location"); bindStoreField("fMob", "mobile");
   $("addExtra").addEventListener("click", () => {
     const p = current(); p.extras = (p.extras || []).concat({ k: "", v: "" });
+    current().carried = false; propagateStore(S.cur);
     renderExtras(); edited(true);
     const ks = $("extras").querySelectorAll("input.k"); if (ks.length) ks[ks.length-1].focus();
   });
